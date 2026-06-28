@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /winkelwagen.html
+
+Sitemap: https://biobudget.nl/sitemap.xml
