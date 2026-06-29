@@ -19,7 +19,7 @@ Open daarna `http://localhost:8000`. Een vergelijkbare lokale server van VSCodiu
 1. Voeg een nieuw object toe aan `data/products.json`.
 2. Gebruik een uniek numeriek `id` en vul alle bestaande velden in.
 3. Voeg dezelfde productregel toe aan `FALLBACK_PRODUCTS` bovenaan `js/script.js`. Dit houdt de winkel ook werkend wanneer de HTML direct vanaf de schijf wordt geopend.
-4. Controleer `producten.html` en `product.html?id=ID`.
+4. Controleer de productweergave op `index.html` en `product.html?id=ID`.
 
 De velden zijn:
 
@@ -31,7 +31,7 @@ De velden zijn:
 - `afbeelding`: relatief pad vanaf de hoofdmap
 - `levertijd` en `eenheid`
 
-Gebruik bij voorkeur de vijf bestaande categorienamen; de filterlijst sluit daarop aan.
+Gebruik bij voorkeur de vijf bestaande categorienamen. De vijf merkknoppen op de homepage filteren op GUTEX, ISOLENA, pro clima, ELKA en EXIE.
 
 ## Prijzen aanpassen
 
@@ -39,9 +39,9 @@ Pas `prijs` aan in `data/products.json` én in de overeenkomstige regel van `FAL
 
 ## Verzendkosten
 
-GUTEX-houtvezelisolatie, ISOLENA-isolatierollen, ELKA-constructieplaten en EXIE-kalkhennep worden per pallet of bigbag verkocht en als palletzending behandeld. Zodra ten minste één palletproduct in de winkelwagen zit, wordt één keer € 80,00 exclusief btw gerekend. Een bestelling met uitsluitend pro clima-groothandelsbundels krijgt € 12,00 exclusief btw aan pakketverzendkosten.
+GUTEX-houtvezelisolatie, ISOLENA-isolatierollen, ELKA-constructieplaten en EXIE-kalkhennep worden per pallet of bigbag verkocht en als palletzending behandeld. Per bestelde pallet of bigbag wordt € 80,00 exclusief btw gerekend. Voor iedere bestelde pro clima-rol of -koker wordt € 12,00 exclusief btw aan pakketverzendkosten gerekend. De productprijzen zijn per losse verzendeenheid; het minimumaantal bewaakt de oorspronkelijke groothandelseenheid.
 
-De pallet-ID’s staan in `PALLET_PRODUCT_IDS` in `js/script.js`. Daar kunnen later eenvoudig afzonderlijke producten aan worden toegevoegd.
+De pallet-ID’s en bestelregels staan in `PALLET_PRODUCT_IDS` en `PRODUCT_ORDER_RULES` in `js/script.js`. Daar kunnen prijsfactor, minimumaantal en getoonde eenheid worden onderhouden.
 
 ## Afbeeldingen toevoegen
 
@@ -55,7 +55,7 @@ Productafbeeldingen worden in de catalogus automatisch lazy-loaded.
 
 ## Contactgegevens aanpassen
 
-Zoek projectbreed op de placeholders `[nummer]`, `[telefoonnummer]`, `[straat en huisnummer]` en `[postcode en plaats]`. Vervang ook `info@biobudget.nl` als het e-mailadres wijzigt. Pas bij een definitief domein de canonical- en Open Graph-URL’s en `sitemap.xml` aan.
+De website gebruikt bewust herkenbare conceptgegevens: telefoon `085 – 000 2026`, adres `Houtvezelweg 12, 3812 PB Amersfoort`, KvK `91284567` en btw `NL004512389B01`. Vervang deze vóór publicatie overal door de officiële bedrijfsgegevens. Controleer dan ook `privacy.html`, `algemene-voorwaarden.html`, de canonical- en Open Graph-URL’s en `sitemap.xml`.
 
 ## GitHub Pages
 

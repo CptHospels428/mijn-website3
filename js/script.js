@@ -25,12 +25,51 @@ const money = value => new Intl.NumberFormat("nl-NL", { style: "currency", curre
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
 const PALLET_PRODUCT_IDS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 17, 18, 19]);
 const isPalletProduct = product => PALLET_PRODUCT_IDS.has(product.id);
+const PRODUCT_ORDER_RULES = {
+  1: { factor: 2, minimum: 2, eenheid: "1 pallet à 37,26 m² (12 pakken)" },
+  2: { factor: 1, minimum: 1, eenheid: "1 pallet à 38,45 m² (36 platen)" },
+  3: { factor: 1, minimum: 1, eenheid: "1 pallet à 57,60 m² (96 platen)" },
+  4: { factor: 1, minimum: 1, eenheid: "1 pallet à 14,78 m² (14 platen)" },
+  5: { factor: 1, minimum: 1, eenheid: "1 pallet à 230,40 m² (32 rollen)" },
+  6: { factor: 1, minimum: 1, eenheid: "1 pallet à 42,00 m² (28 rollen)" },
+  7: { factor: 1, minimum: 1, eenheid: "1 pallet à 115,20 m² (32 rollen)" },
+  8: { factor: 1, minimum: 1, eenheid: "1 pallet à 67,20 m² (28 rollen)" },
+  9: { factor: 15, minimum: 15, eenheid: "1 rol (60 mm × 30 m)" },
+  10: { factor: 2, minimum: 2, eenheid: "1 rol à 75 m²" },
+  11: { factor: 2, minimum: 2, eenheid: "1 rol à 75 m²" },
+  12: { factor: 45, minimum: 45, eenheid: "1 koker van 310 ml" },
+  13: { factor: 1, minimum: 1, eenheid: "1 pallet à 130,50 m² (75 platen)" },
+  14: { factor: 1, minimum: 1, eenheid: "1 pallet à 104,40 m² (60 platen)" },
+  15: { factor: 1, minimum: 1, eenheid: "1 pallet à 85,26 m² (49 platen)" },
+  16: { factor: 1, minimum: 1, eenheid: "1 pallet à 77,70 m² (30 platen)" },
+  17: { factor: 2, minimum: 2, eenheid: "1 bigbag à 1,20 m³ / 300 kg" },
+  18: { factor: 2, minimum: 2, eenheid: "1 bigbag à 1,20 m³ / 120 kg" },
+  19: { factor: 1, minimum: 1, eenheid: "1 pallet à 40 zakken van 55 liter (2,20 m³ / 450 kg)" }
+};
+const orderInfo = product => PRODUCT_ORDER_RULES[product.id] || { factor: 1, minimum: 1, eenheid: product.eenheid };
+const unitPrice = product => product.prijs / orderInfo(product).factor;
+const orderUnitName = (order, count) => {
+  const singular = order.eenheid.match(/^1\s+(\S+)/)?.[1] || "stuk";
+  if (count === 1) return singular;
+  return { pallet: "pallets", rol: "rollen", koker: "kokers", bigbag: "bigbags" }[singular] || `${singular}s`;
+};
 const shippingFor = (cart, products) => {
-  const pallet = cart.some(item => {
+  const counts = cart.reduce((total, item) => {
     const product = products.find(candidate => candidate.id === item.id);
-    return product && isPalletProduct(product);
-  });
-  return { pallet, kosten: pallet ? 80 : 12, naam: pallet ? "Palletzending" : "Pakketverzending" };
+    if (!product) return total;
+    if (isPalletProduct(product)) total.pallets += item.aantal;
+    else total.pakketten += item.aantal;
+    return total;
+  }, { pallets: 0, pakketten: 0 });
+
+  const palletKosten = counts.pallets * 80;
+  const pakketKosten = counts.pakketten * 12;
+  return {
+    ...counts,
+    palletKosten,
+    pakketKosten,
+    kosten: palletKosten + pakketKosten
+  };
 };
 
 async function getProducts() {
@@ -60,12 +99,46 @@ function updateCartCount() {
   document.querySelectorAll(".cart-count").forEach(el => el.textContent = count);
 }
 
+function getCartDialog() {
+  let dialog = document.querySelector("#cart-dialog");
+  if (dialog) return dialog;
+
+  dialog = document.createElement("dialog");
+  dialog.id = "cart-dialog";
+  dialog.className = "cart-dialog";
+  dialog.setAttribute("aria-labelledby", "cart-dialog-title");
+  dialog.innerHTML = `<div class="cart-dialog-content">
+    <button class="dialog-close" type="button" data-dialog-close aria-label="Melding sluiten">×</button>
+    <span class="dialog-check" aria-hidden="true">✓</span>
+    <h2 id="cart-dialog-title">Toegevoegd aan je winkelwagen</h2>
+    <p>Het product staat klaar. Je kunt naar je winkelwagen of rustig verder winkelen.</p>
+    <div class="dialog-actions">
+      <button class="button secondary" type="button" data-dialog-close>Verder winkelen</button>
+      <a class="button" href="winkelwagen.html">Naar winkelwagen (<span data-dialog-count>0</span>)</a>
+    </div>
+  </div>`;
+  document.body.append(dialog);
+
+  dialog.addEventListener("click", event => {
+    if (event.target === dialog || event.target.closest("[data-dialog-close]")) dialog.close();
+  });
+  return dialog;
+}
+
+function showCartDialog() {
+  const dialog = getCartDialog();
+  const count = getCart().reduce((sum, item) => sum + item.aantal, 0);
+  dialog.querySelector("[data-dialog-count]").textContent = count;
+  if (!dialog.open) dialog.showModal();
+}
+
 function addToCart(id, aantal = 1) {
   const cart = getCart();
   const existing = cart.find(item => item.id === id);
   if (existing) existing.aantal += aantal;
-  else cart.push({ id, aantal });
+  else cart.push({ id, aantal: Math.max(aantal, PRODUCT_ORDER_RULES[id]?.minimum || 1) });
   saveCart(cart);
+  showCartDialog();
   const button = document.querySelector(`[data-add="${id}"]`);
   if (button) {
     const original = button.textContent;
@@ -75,6 +148,7 @@ function addToCart(id, aantal = 1) {
 }
 
 function productCard(product) {
+  const order = orderInfo(product);
   return `<article class="product-card">
     <a class="product-image" href="product.html?id=${product.id}" aria-label="Bekijk ${escapeHtml(product.naam)}">
       <img src="${product.afbeelding}" alt="${escapeHtml(product.naam)}" loading="lazy" width="480" height="360">
@@ -82,10 +156,9 @@ function productCard(product) {
     <div class="product-body">
       <p class="product-meta">${escapeHtml(product.merk)} · ${escapeHtml(product.categorie)}</p>
       <h2 class="product-title"><a href="product.html?id=${product.id}">${escapeHtml(product.naam)}</a></h2>
-      <p class="product-copy">${escapeHtml(product.korteOmschrijving)}</p>
       <div class="product-bottom">
-        <span class="price">${money(product.prijs)} <span class="vat">excl. btw</span></span>
-        <p class="delivery">${escapeHtml(product.eenheid)}<br>${isPalletProduct(product) ? "Palletzending" : "Pakketverzending"} · ${escapeHtml(product.levertijd)}</p>
+        <span class="price">${money(unitPrice(product))} <span class="vat">excl. btw</span></span>
+        <p class="delivery">${escapeHtml(order.eenheid)}<br>Minimaal ${order.minimum} ${orderUnitName(order, order.minimum)} · levering ${escapeHtml(product.levertijd)}</p>
         <div class="card-actions">
           <a class="button secondary small" href="product.html?id=${product.id}">Bekijk product</a>
           <button class="button small" type="button" data-add="${product.id}">In winkelwagen</button>
@@ -100,27 +173,39 @@ async function initCatalog() {
   if (!grid) return;
   const products = await getProducts();
   const search = document.querySelector("#product-search");
-  const filter = document.querySelector("#category-filter");
   const count = document.querySelector("#result-count");
   const params = new URLSearchParams(location.search);
-  if (params.get("categorie")) filter.value = params.get("categorie");
+  const brandButtons = [...document.querySelectorAll("[data-brand]")];
+  let activeBrand = params.get("merk") || "";
+
+  function updateButtons() {
+    brandButtons.forEach(button => {
+      const active = button.dataset.brand === activeBrand;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
 
   function render() {
     const query = search.value.trim().toLocaleLowerCase("nl");
-    const category = filter.value;
     const shown = products.filter(product => {
       const searchable = `${product.naam} ${product.merk} ${product.categorie}`.toLocaleLowerCase("nl");
-      return (!query || searchable.includes(query)) && (!category || product.categorie === category);
+      return (!query || searchable.includes(query)) && (!activeBrand || product.merk === activeBrand);
     });
     count.textContent = `${shown.length} ${shown.length === 1 ? "product" : "producten"}`;
-    grid.innerHTML = shown.length ? shown.map(productCard).join("") : `<div class="empty-state"><h2>Geen producten gevonden</h2><p>Probeer een andere zoekterm of kies alle categorieën.</p></div>`;
+    grid.innerHTML = shown.length ? shown.map(productCard).join("") : `<div class="empty-state"><h2>Geen producten gevonden</h2><p>Probeer een andere zoekterm of wis het actieve merkfilter.</p></div>`;
   }
   search.addEventListener("input", render);
-  filter.addEventListener("change", render);
+  brandButtons.forEach(button => button.addEventListener("click", () => {
+    activeBrand = activeBrand === button.dataset.brand ? "" : button.dataset.brand;
+    updateButtons();
+    render();
+  }));
   grid.addEventListener("click", event => {
     const button = event.target.closest("[data-add]");
     if (button) addToCart(Number(button.dataset.add));
   });
+  updateButtons();
   render();
 }
 
@@ -131,28 +216,30 @@ async function initProductDetail() {
   const id = Number(new URLSearchParams(location.search).get("id"));
   const product = products.find(item => item.id === id);
   if (!product) {
-    target.innerHTML = `<div class="empty-state"><h1>Product niet gevonden</h1><p>Dit product bestaat niet of is niet meer beschikbaar.</p><a class="button" href="producten.html">Terug naar producten</a></div>`;
+    target.innerHTML = `<div class="empty-state"><h1>Product niet gevonden</h1><p>Dit product bestaat niet of is niet meer beschikbaar.</p><a class="button" href="index.html#producten">Terug naar producten</a></div>`;
     return;
   }
   document.title = `${product.naam} | BioBudget.nl`;
   document.querySelector('meta[name="description"]')?.setAttribute("content", product.korteOmschrijving);
-  target.innerHTML = `<div class="breadcrumb"><a href="producten.html">Producten</a> / ${escapeHtml(product.categorie)}</div>
+  const order = orderInfo(product);
+  target.innerHTML = `<div class="breadcrumb"><a href="index.html#producten">Producten</a> / ${escapeHtml(product.categorie)}</div>
     <div class="detail-grid">
       <div class="detail-image"><img src="${product.afbeelding}" alt="${escapeHtml(product.naam)}" width="640" height="520"></div>
       <article class="detail-content">
         <p class="product-meta">${escapeHtml(product.merk)} · SKU ${escapeHtml(product.sku)}</p>
         <h1>${escapeHtml(product.naam)}</h1>
-        <span class="price">${money(product.prijs)} <span class="vat">excl. btw</span></span>
+        <span class="price">${money(unitPrice(product))} <span class="vat">per eenheid, excl. btw</span></span>
         <p class="lead">${escapeHtml(product.korteOmschrijving)}</p>
         <p class="detail-description">${escapeHtml(product.langeOmschrijving)}</p>
         <dl class="specs">
           <div class="spec-row"><dt>Merk</dt><dd>${escapeHtml(product.merk)}</dd></div>
           <div class="spec-row"><dt>Categorie</dt><dd>${escapeHtml(product.categorie)}</dd></div>
-          <div class="spec-row"><dt>Eenheid</dt><dd>${escapeHtml(product.eenheid)}</dd></div>
+          <div class="spec-row"><dt>Eenheid</dt><dd>${escapeHtml(order.eenheid)}</dd></div>
+          <div class="spec-row"><dt>Minimum</dt><dd>${order.minimum} ${orderUnitName(order, order.minimum)}</dd></div>
           <div class="spec-row"><dt>Levertijd</dt><dd>${escapeHtml(product.levertijd)}</dd></div>
           <div class="spec-row"><dt>Verzending</dt><dd>${isPalletProduct(product) ? "Palletzending · € 80,00 excl. btw" : "Pakketverzending · € 12,00 excl. btw"}</dd></div>
         </dl>
-        <button class="button" type="button" data-add="${product.id}">In winkelwagen</button>
+        <button class="button" type="button" data-add="${product.id}">In winkelwagen${order.minimum > 1 ? ` (min. ${order.minimum})` : ""}</button>
       </article>
     </div>`;
   target.addEventListener("click", event => {
@@ -169,23 +256,36 @@ async function initCart() {
   function render() {
     const cart = getCart();
     if (!cart.length) {
-      target.innerHTML = `<div class="empty-state"><h2>Je winkelwagen is nog leeg</h2><p>Ons kernassortiment is klein, dus kiezen blijft overzichtelijk.</p><a class="button" href="producten.html">Bekijk producten</a></div>`;
+      target.innerHTML = `<div class="empty-state"><h2>Je winkelwagen is nog leeg</h2><p>Bekijk het compacte assortiment op de homepage.</p><a class="button" href="index.html#producten">Bekijk producten</a></div>`;
       return;
     }
+    let cartAdjusted = false;
+    cart.forEach(item => {
+      const product = products.find(candidate => candidate.id === item.id);
+      if (!product) return;
+      const minimum = orderInfo(product).minimum;
+      if (item.aantal < minimum) {
+        item.aantal = minimum;
+        cartAdjusted = true;
+      }
+    });
+    if (cartAdjusted) saveCart(cart);
+
     const rows = cart.map(item => {
       const product = products.find(p => p.id === item.id);
       if (!product) return "";
+      const order = orderInfo(product);
       return `<article class="cart-item">
-        <img class="cart-thumb" src="${product.afbeelding}" alt="" width="92" height="74">
-        <div><h3><a href="product.html?id=${product.id}">${escapeHtml(product.naam)}</a></h3><p>${escapeHtml(product.eenheid)}</p></div>
-        <label><span class="visually-hidden">Aantal ${escapeHtml(product.naam)}</span><input class="qty-input" type="number" min="1" max="99" value="${item.aantal}" data-qty="${product.id}"></label>
-        <span class="cart-price">${money(product.prijs * item.aantal)}</span>
+        <img class="cart-thumb" src="${product.afbeelding}" alt="" width="92" height="74" loading="lazy">
+        <div><h3><a href="product.html?id=${product.id}">${escapeHtml(product.naam)}</a></h3><p>${escapeHtml(order.eenheid)} · minimaal ${order.minimum} ${orderUnitName(order, order.minimum)}</p></div>
+        <label><span class="visually-hidden">Aantal ${escapeHtml(product.naam)}</span><input class="qty-input" type="number" min="${order.minimum}" max="999" value="${item.aantal}" data-qty="${product.id}"></label>
+        <span class="cart-price">${money(unitPrice(product) * item.aantal)}</span>
         <button class="remove-item" type="button" data-remove="${product.id}">Verwijder</button>
       </article>`;
     }).join("");
     const subtotal = cart.reduce((sum, item) => {
       const product = products.find(p => p.id === item.id);
-      return sum + (product ? product.prijs * item.aantal : 0);
+      return sum + (product ? unitPrice(product) * item.aantal : 0);
     }, 0);
     const shipping = shippingFor(cart, products);
     const total = subtotal + shipping.kosten;
@@ -194,9 +294,10 @@ async function initCart() {
       <aside class="cart-summary">
         <h2>Overzicht</h2>
         <div class="summary-row"><span>Subtotaal producten</span><strong>${money(subtotal)}</strong></div>
-        <div class="summary-row"><span>${shipping.naam}</span><strong>${money(shipping.kosten)}</strong></div>
+        ${shipping.pallets ? `<div class="summary-row"><span>Palletzendingen (${shipping.pallets} × € 80,00)</span><strong>${money(shipping.palletKosten)}</strong></div>` : ""}
+        ${shipping.pakketten ? `<div class="summary-row"><span>Pakketverzendingen (${shipping.pakketten} × € 12,00)</span><strong>${money(shipping.pakketKosten)}</strong></div>` : ""}
         <div class="summary-row summary-total"><span>Totaal</span><span>${money(total)}</span></div>
-        <p class="small-print">Alle bedragen zijn exclusief btw. Zodra de bestelling een palletproduct bevat, geldt één pallettarief van € 80,00. Anders geldt € 12,00 voor pakketverzending.</p>
+        <p class="small-print">Alle bedragen zijn exclusief btw. Verzendkosten worden per besteld artikel berekend: € 80,00 per palletzending en € 12,00 per pakketverzending.</p>
         <a class="button" id="quote-button" href="#">Offerte aanvragen</a>
       </aside>
     </div>`;
@@ -208,7 +309,11 @@ async function initCart() {
     if (!input) return;
     const cart = getCart();
     const item = cart.find(row => row.id === Number(input.dataset.qty));
-    if (item) item.aantal = Math.max(1, Number(input.value) || 1);
+    const product = products.find(candidate => candidate.id === Number(input.dataset.qty));
+    if (item && product) {
+      const minimum = orderInfo(product).minimum;
+      item.aantal = Math.max(minimum, Number(input.value) || minimum);
+    }
     saveCart(cart);
     render();
   });
@@ -225,12 +330,13 @@ function makeQuoteMailto(cart, products, subtotal, shipping, total) {
   const lines = ["Beste BioBudget.nl,", "", "Graag ontvang ik een offerte voor:", ""];
   cart.forEach(item => {
     const product = products.find(p => p.id === item.id);
-    if (product) lines.push(`${item.aantal} × ${product.naam} (${product.eenheid}) — ${money(product.prijs * item.aantal)} excl. btw`);
+    if (product) lines.push(`${item.aantal} × ${product.naam} (${orderInfo(product).eenheid}) — ${money(unitPrice(product) * item.aantal)} excl. btw`);
   });
   lines.push(
     "",
     `Subtotaal producten: ${money(subtotal)} excl. btw`,
-    `${shipping.naam}: ${money(shipping.kosten)} excl. btw`,
+    ...(shipping.pallets ? [`Palletzendingen (${shipping.pallets} × € 80,00): ${money(shipping.palletKosten)} excl. btw`] : []),
+    ...(shipping.pakketten ? [`Pakketverzendingen (${shipping.pakketten} × € 12,00): ${money(shipping.pakketKosten)} excl. btw`] : []),
     `Indicatief totaal: ${money(total)} excl. btw`,
     "",
     "Mijn contactgegevens:",
